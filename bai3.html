@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Triển khai & Quản trị Hệ thống - Bài 6</title>
+    <style>
+      :root {
+        --bg1: #89f7fe;
+        --bg2: #66a6ff;
+        --card: #ffffff;
+        --ink: #1f2937;
+        --muted: #6b7280;
+        --accent: #2563eb;
+        --good: #16a34a;
+        --bad: #dc2626;
+      }
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, sans-serif;
+        color: var(--ink);
+        background: linear-gradient(135deg, var(--bg1), var(--bg2));
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(6px);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+      }
+      .wrap {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 16px 20px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(22px, 3vw, 30px);
+      }
+      .toolbar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      button {
+        border: none;
+        padding: 10px 16px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 600;
+        background: var(--accent);
+        color: #fff;
+      }
+      button.secondary {
+        background: #111827;
+      }
+      button.ghost {
+        background: #fff;
+        color: #111827;
+        border: 1px solid #ddd;
+      }
+      .cards {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 20px;
+      }
+      .card {
+        background: var(--card);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+      }
+      .qhead {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+      }
+      .qidx {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        color: #fff;
+        background: #111827;
+        flex-shrink: 0;
+      }
+      .qtitle {
+        font-weight: 700;
+      }
+      .hint {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .answers {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .answers label {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 12px;
+        border: 1px solid #ddd;
+        border-radius: 12px;
+        cursor: pointer;
+        background: #fff;
+      }
+      .answers input {
+        width: 18px;
+        height: 18px;
+      }
+      .tf-item {
+        padding: 10px 12px;
+        border: 1px solid #ddd;
+        border-radius: 12px;
+        background: #fff;
+        margin-bottom: 8px;
+      }
+      .tf-row {
+        margin-top: 6px;
+        display: flex;
+        gap: 16px;
+      }
+      .dragwrap {
+        display: grid;
+        gap: 12px;
+      }
+      .dragzone {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+      }
+      .zone {
+        min-height: 64px;
+        border: 2px dashed #aaa;
+        border-radius: 14px;
+        padding: 10px;
+        background: #fafafa;
+      }
+      .pill {
+        background: #eef2ff;
+        border: 1px solid #99c;
+        border-radius: 999px;
+        padding: 8px 12px;
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        font-weight: 600;
+        user-select: none;
+        cursor: grab;
+        margin: 4px;
+      }
+      .pool,
+      .droparea {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        min-height: 40px;
+      }
+      .result {
+        margin-top: 12px;
+        font-weight: 700;
+      }
+      .r-good {
+        color: var(--good);
+      }
+      .r-bad {
+        color: var(--bad);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <h1>Triển khai & Quản trị Hệ thống - Bài 6</h1>
+        <div class="toolbar">
+          <button id="btnCheck">Xem kết quả</button>
+          <button class="secondary" id="btnReset">Làm lại & đảo câu</button>
+          <button class="ghost" id="btnToggleKey">Hiện/ẩn đáp án đúng</button>
+          <div class="meta" id="meta">0/0 câu</div>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap"><div id="list" class="cards"></div></main>
+    <script>
+      const clone = (x) => JSON.parse(JSON.stringify(x));
+      const shuffle = (arr) => {
+        const a = [...arr];
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      };
+      const el = (tag, attrs = {}, html = "") => {
+        const e = document.createElement(tag);
+        Object.entries(attrs).forEach(([k, v]) => {
+          if (k === "class") e.className = v;
+          else if (k === "dataset") Object.assign(e.dataset, v);
+          else e.setAttribute(k, v);
+        });
+        if (html) e.innerHTML = html;
+        return e;
+      };
+      const safeId = (str) =>
+        "id_" +
+        str
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-zA-Z0-9]/g, "_");
+
+      const BANK = [
+  {
+    id: 1,
+    type: "multi",
+    title: "Những nguy cơ nào có thể xảy ra khi một hệ thống thiếu cơ chế giám sát? Hãy chọn các đáp án đúng nhất!",
+    options: [
+      "Tồn tại các \"sự cố ẩn\" mà quản trị viên không nhận biết được",
+      "Khó khăn trong việc điều tra nguyên nhân gốc rễ (Root Cause Analysis)",
+      "Hệ thống tự động tối ưu tài nguyên mà không cần can thiệp",
+      "Việc lập kế hoạch mở rộng hạ tầng chỉ dựa trên cảm tính"
+    ],
+    answer: [
+      "Tồn tại các \"sự cố ẩn\" mà quản trị viên không nhận biết được",
+      "Khó khăn trong việc điều tra nguyên nhân gốc rễ (Root Cause Analysis)",
+      "Việc lập kế hoạch mở rộng hạ tầng chỉ dựa trên cảm tính"
+    ]
+  },
+  {
+    id: 2,
+    type: "tfset",
+    title: "Khái niệm \"khả năng quan sát được\" (Observability) có ý nghĩa gì đối với hệ thống hiện đại? Hãy đưa ra nhận định của em.",
+    statements: [
+      {
+        text: "Là yếu tố sống còn cho các mô hình Cloud-native và Microservices phức tạp",
+        answer: true
+      },
+      {
+        text: "Là khả năng nhìn thấu trạng thái nội tại của hệ thống thông qua dữ liệu",
+        answer: true
+      },
+      {
+        text: "Là việc tắt toàn bộ log để tăng tốc độ xử lý",
+        answer: false
+      },
+      {
+        text: "Là việc chỉ kiểm tra máy chủ còn sống hay đã chết",
+        answer: false
+      }
+    ]
+  },
+  {
+    id: 3,
+    type: "single",
+    title: "Lợi ích cốt lõi mà giám sát mang lại cho doanh nghiệp là gì?",
+    options: [
+      "Chuyển đổi từ giám sát thụ động sang quản trị hệ thống chủ động",
+      "Phát hiện rủi ro trước khi nó trở thành sự cố nghiêm trọng",
+      "Đảm bảo hệ thống không bao giờ gặp lỗi",
+      "Loại bỏ hoàn toàn nhu cầu bảo trì định kỳ"
+    ],
+    answer: ["Chuyển đổi từ giám sát thụ động sang quản trị hệ thống chủ động"]
+  },
+  {
+    id: 4,
+    type: "multi",
+    title: "Trong case study Ngân hàng số, những lợi ích nào đạt được sau khi triển khai Prometheus kết hợp Kubernetes Service Discovery? Hãy chọn 3 đáp án đúng nhất!",
+    options: [
+      "Tự động phát hiện và giám sát 100% các pod mới sinh ra",
+      "Giảm 70% cảnh báo nhiễu nhờ cơ chế nhóm cảnh báo của Alertmanager",
+      "Loại bỏ hoàn toàn nhu cầu sử dụng cơ sở dữ liệu",
+      "Phát hiện sớm lỗi rò rỉ bộ nhớ của ứng dụng Java qua JVM metrics"
+    ],
+    answer: [
+      "Tự động phát hiện và giám sát 100% các pod mới sinh ra",
+      "Giảm 70% cảnh báo nhiễu nhờ cơ chế nhóm cảnh báo của Alertmanager",
+      "Phát hiện sớm lỗi rò rỉ bộ nhớ của ứng dụng Java qua JVM metrics"
+    ]
+  },
+  {
+    id: 5,
+    type: "single",
+    title: "Trong mô hình Pull của Prometheus, vai trò chủ động thuộc về thành phần nào?",
+    options: [
+      "Prometheus Server",
+      "Các target (mục tiêu giám sát)",
+      "Pushgateway",
+      "Alertmanager"
+    ],
+    answer: ["Prometheus Server"]
+  },
+  {
+    id: 6,
+    type: "multi",
+    title: "Những ưu điểm nào sau đây thuộc về mô hình Pull của Prometheus? Hãy chọn các đáp án đúng nhất!",
+    options: [
+      "Server giám sát chủ động kiểm soát tần suất lấy dữ liệu",
+      "Dễ dàng health check qua chỉ số up = 0 khi target không phản hồi",
+      "Phù hợp hoàn hảo với môi trường động như Kubernetes nhờ Service Discovery",
+      "Bắt buộc mọi ứng dụng phải biết địa chỉ IP của Prometheus Server"
+    ],
+    answer: [
+      "Server giám sát chủ động kiểm soát tần suất lấy dữ liệu",
+      "Dễ dàng health check qua chỉ số up = 0 khi target không phản hồi",
+      "Phù hợp hoàn hảo với môi trường động như Kubernetes nhờ Service Discovery"
+    ]
+  },
+  {
+    id: 7,
+    type: "single",
+    title: "Một quản trị viên cài đặt Node Exporter trên một máy chủ Linux. Sau khi cài đặt thành công, anh ta có thể truy cập endpoint nào để xem các chỉ số phần cứng được expose?",
+    options: [
+      "http://localhost:9100/metrics",
+      "http://localhost:9090/metrics",
+      "http://localhost:3000/metrics",
+      "http://localhost:9104/metrics"
+    ],
+    answer: ["http://localhost:9100/metrics"]
+  },
+  {
+    id: 8,
+    type: "tfset",
+    title: "Sau khi khởi động hệ thống bằng $docker compose up -d, quản trị viên muốn truy cập vào Grafana lần đầu. Những thông tin nào sau đây là chính xác?",
+    statements: [
+      {
+        text: "URL truy cập là http://localhost:3000",
+        answer: true
+      },
+      {
+        text: "Tài khoản và mật khẩu mặc định là admin/admin",
+        answer: true
+      },
+      {
+        text: "Cần thay đổi mật khẩu mặc định ngay sau khi cài đặt vì lý do bảo mật",
+        answer: true
+      },
+      {
+        text: "URL truy cập là http://localhost:9090",
+        answer: false
+      }
+    ]
+  },
+  {
+    id: 9,
+    type: "tfset",
+    title: "Trong cấu hình mysql-exporter, biến môi trường DATA_SOURCE_NAME được đặt là \"wpuser:wppass@tcp(mysql:3306)/wpdb\". Phân tích nào sau đây là đúng?",
+    statements: [
+      {
+        text: "mysql-exporter kết nối tới MySQL qua hostname mysql ở cổng 3306",
+        answer: true
+      },
+      {
+        text: "Kết nối này được thực hiện qua app-network",
+        answer: true
+      },
+      {
+        text: "wpuser:wppass là thông tin tài khoản dùng để truy cập database",
+        answer: true
+      },
+      {
+        text: "mysql:3306 là địa chỉ của Prometheus Server",
+        answer: false
+      }
+    ]
+  },
+  {
+    id: 10,
+    type: "tfset",
+    title: "Trước khi khởi động lại dịch vụ Prometheus với file cấu hình mới, để tránh làm sập hệ thống do lỗi cú pháp YAML, quản trị viên nên làm gì?",
+    statements: [
+      {
+        text: "Sử dụng công cụ promtool để kiểm tra cú pháp prometheus.yml",
+        answer: true
+      },
+      {
+        text: "Kiểm tra lỗi viết sai dấu cách trong file YAML",
+        answer: true
+      },
+      {
+        text: "Khởi động lại ngay lập tức để kiểm thử trực tiếp",
+        answer: false
+      },
+      {
+        text: "Xóa toàn bộ file cấu hình cũ trước khi sửa",
+        answer: false
+      }
+    ]
+  },
+  {
+    id: 11,
+    type: "multi",
+    title: "Trong hệ thống thực hành, Prometheus thu thập metrics của WordPress chủ yếu bằng cách nào và qua network nào? Hãy chọn các đáp án đúng nhất!",
+    options: [
+      "Gián tiếp thông qua cAdvisor (network I/O, CPU, RAM...)",
+      "Việc thu thập diễn ra trên network monitoring",
+      "cAdvisor thu thập metrics container ở mức host/cgroup",
+      "Trực tiếp qua mysql-exporter trên app-network"
+    ],
+    answer: [
+      "Gián tiếp thông qua cAdvisor (network I/O, CPU, RAM...)",
+      "Việc thu thập diễn ra trên network monitoring",
+      "cAdvisor thu thập metrics container ở mức host/cgroup"
+    ]
+  },
+  {
+    id: 12,
+    type: "single",
+    title: "Tình huống: Trong kịch bản triển khai hệ thống giám sát WordPress + MySQL với Docker Compose, để đảm bảo Prometheus có thể thu thập metrics từ MySQL mà không để Prometheus truy cập trực tiếp vào cơ sở dữ liệu, cấu hình network nào là phù hợp nhất cho container mysql-exporter?",
+    options: [
+      "Đặt mysql-exporter vào cả hai network app-network và monitoring",
+      "Chỉ đặt mysql-exporter vào network monitoring",
+      "Đặt mysql-exporter chỉ vào network app-network",
+      "Tạo thêm một network thứ ba để kết nối mysql-exporter với Prometheus"
+    ],
+    answer: ["Đặt mysql-exporter vào cả hai network app-network và monitoring"]
+  },
+  {
+    id: 13,
+    type: "single",
+    title: "Trong file docker-compose.yml, để cAdvisor thu thập được thông tin CPU, RAM và network I/O của tất cả container (bao gồm cả container nằm ở app-network), cần mount volume nào từ host?",
+    options: [
+      "/var/run/docker.sock và /sys, /var/lib/docker",
+      "Chỉ mount /var/run/docker.sock và /var/lib/docker",
+      "Chỉ mount thư mục /prometheus",
+      "Mount toàn bộ thư mục /etc"
+    ],
+    answer: ["/var/run/docker.sock và /sys, /var/lib/docker"]
+  },
+  {
+    id: 14,
+    type: "single",
+    title: "Để cấu hình Grafana hiển thị đồng thời dashboard cho Node Exporter, cAdvisor và MySQL, quản trị viên cần thực hiện bao nhiêu bước thêm Data Source và import dashboard?",
+    options: [
+      "Thêm 1 Data Source Prometheus và import 3 dashboard tương ứng",
+      "Thêm 3 Data Source riêng biệt cho từng exporter",
+      "Chỉ cần import 1 dashboard duy nhất",
+      "Thêm Data Source cho từng dashboard"
+    ],
+    answer: ["Thêm 1 Data Source Prometheus và import 3 dashboard tương ứng"]
+  },
+  {
+    id: 15,
+    type: "single",
+    title: "Trong trường hợp muốn Prometheus thu thập metrics từ một job ngắn hạn (short-lived job) như script backup, giải pháp phù hợp nhất là sử dụng thành phần nào?",
+    options: [
+      "Pushgateway",
+      "Node Exporter",
+      "cAdvisor",
+      "MySQL Exporter"
+    ],
+    answer: ["Pushgateway"]
+  },
+  {
+    id: 16,
+    type: "single",
+    title: "Trong case study \"Mô hình quản lý Nhà hàng\", hệ thống cảm biến kho hàng tương ứng với thành phần nào trong giám sát máy chủ?",
+    options: [
+      "Hệ thống giám sát máy chủ với cảnh báo theo ngưỡng",
+      "Cơ sở dữ liệu lưu trữ đơn hàng",
+      "Giao diện người dùng của ứng dụng web",
+      "Tường lửa bảo vệ hệ thống"
+    ],
+    answer: ["Hệ thống giám sát máy chủ với cảnh báo theo ngưỡng"]
+  },
+  {
+    id: 17,
+    type: "multi",
+    title: "Pushgateway được sử dụng phù hợp nhất trong những tình huống nào? Hãy chọn các đáp án đúng nhất!",
+    options: [
+      "Các Short-lived jobs hoàn thành trước khi Prometheus kịp scrape",
+      "Các máy chủ nằm sau tường lửa chỉ cho phép đẩy dữ liệu ra ngoài",
+      "Các tác vụ nghiệp vụ ngắt quãng như script sao lưu, dọn dẹp hệ thống",
+      "Giám sát các dịch vụ web chạy liên tục trong nhiều ngày"
+    ],
+    answer: [
+      "Các Short-lived jobs hoàn thành trước khi Prometheus kịp scrape",
+      "Các máy chủ nằm sau tường lửa chỉ cho phép đẩy dữ liệu ra ngoài",
+      "Các tác vụ nghiệp vụ ngắt quãng như script sao lưu, dọn dẹp hệ thống"
+    ]
+  },
+  {
+    id: 18,
+    type: "single",
+    title: "Trong prometheus.yml, nếu muốn Prometheus có thể thu thập metrics từ WordPress thông qua cAdvisor thay vì yêu cầu WordPress expose /metrics endpoint, cấu hình job_name nào là phù hợp?",
+    options: [
+      "job_name: 'cadvisor' với target là cadvisor:8080",
+      "job_name: 'node-exporter'",
+      "job_name: 'wordpress' với metrics_path: /metrics",
+      "job_name: 'mysql'"
+    ],
+    answer: ["job_name: 'cadvisor' với target là cadvisor:8080"]
+  },
+  {
+    id: 19,
+    type: "tfset",
+    title: "Tại sao giám sát giúp giảm thời gian gián đoạn dịch vụ khi xảy ra sự cố? Hãy đưa ra nhận định của em.",
+    statements: [
+      {
+        text: "Vì cung cấp dữ liệu lịch sử hỗ trợ điều tra nguyên nhân gốc rễ",
+        answer: true
+      },
+      {
+        text: "Vì cho phép phát hiện sự cố ngay khi mới phát sinh thay vì đợi người dùng khiếu nại",
+        answer: true
+      },
+      {
+        text: "Vì tự động sửa lỗi mà không cần con người can thiệp",
+        answer: false
+      },
+      {
+        text: "Vì xóa toàn bộ dữ liệu lỗi để hệ thống chạy lại từ đầu",
+        answer: false
+      }
+    ]
+  },
+  {
+    id: 20,
+    type: "single",
+    title: "Định dạng dữ liệu đa chiều của Prometheus được biểu diễn như thế nào?",
+    options: [
+      "<metric name>{<label name>=<label value>, ...}<samples>",
+      "Tập hợp tên metric kèm các cặp nhãn (labels) key-value",
+      "Một bảng quan hệ với khóa chính và khóa ngoại",
+      "Chuỗi log văn bản không có cấu trúc"
+    ],
+    answer: ["<metric name>{<label name>=<label value>, ...}<samples>"]
+  }
+];
+
+      let WORK = [];
+      function reset(shuffleAll = true) {
+        WORK = clone(BANK);
+        if (shuffleAll) WORK = shuffle(WORK);
+        WORK.forEach((q) => {
+          if (q.options) q.options = shuffle(q.options);
+          if (q.type === "drag_pairs") {
+            const entries = Object.entries(q.pairs);
+            q.__left = shuffle(entries.map(([k]) => k));
+            q.__right = shuffle(entries.map(([_, v]) => v));
+            q.__extras = q.extras ? shuffle(q.extras) : [];
+          }
+          if (q.type === "drag_groups") {
+            q.__items = shuffle(q.items);
+            q.__groupNames = Object.keys(q.groups);
+          }
+        });
+        render();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      function render() {
+        const list = document.getElementById("list");
+        list.innerHTML = "";
+        document.getElementById("meta").textContent = `${WORK.length} câu`;
+        WORK.forEach((q, qi) => {
+          const card = el("div", { class: "card", id: `q_${qi}` });
+          const head = el("div", { class: "qhead" });
+          head.append(el("div", { class: "qidx" }, String(qi + 1)));
+          const title = el("div", { class: "qtitle" }, q.title);
+          if (q.type === "multi")
+            title.append(el("div", { class: "hint" }, "(Chọn nhiều)"));
+          if (q.type === "tfset")
+            title.append(el("div", { class: "hint" }, "(Đúng / Sai)"));
+          if (q.type && q.type.includes("drag"))
+            title.append(el("div", { class: "hint" }, "(Kéo thả)"));
+          head.append(title);
+          card.append(head);
+          const body = el("div", { class: "answers" });
+
+          if (q.type === "single" || q.type === "multi") {
+            q.options.forEach((opt) => {
+              const id = `q${qi}_${safeId(opt)}`;
+              const lab = el("label");
+              const ipt = el("input", {
+                type: q.type === "single" ? "radio" : "checkbox",
+                name: `q${qi}`,
+                value: opt,
+                id,
+              });
+              lab.append(ipt, el("span", {}, opt));
+              body.append(lab);
+            });
+          }
+          if (q.type === "tfset") {
+            q.statements.forEach((st, si) => {
+              const row = el("div", { class: "tf-item" });
+              row.append(el("div", {}, st.text));
+              const ch = el("div", { class: "tf-row" });
+              ["Đúng", "Sai"].forEach((v) => {
+                const lab = el("label");
+                const ipt = el("input", {
+                  type: "radio",
+                  name: `q${qi}_s${si}`,
+                  value: v,
+                });
+                lab.append(ipt, el("span", {}, v));
+                ch.append(lab);
+              });
+              row.append(ch);
+              body.append(row);
+            });
+          }
+          if (q.type === "drag_pairs") {
+            const wrap = el("div", { class: "dragwrap" });
+            const zones = el("div", { class: "dragzone" });
+            q.__right.forEach((r) => {
+              const z = el("div", { class: "zone", dataset: { target: r } });
+              z.append(el("h4", {}, r), el("div", { class: "droparea" }));
+              zones.append(z);
+            });
+            wrap.append(zones);
+            const pool = el("div", { class: "pool" });
+            [...q.__left, ...(q.__extras || [])].forEach((l) => {
+              pool.append(
+                el(
+                  "div",
+                  { class: "pill", draggable: true, dataset: { txt: l } },
+                  l,
+                ),
+              );
+            });
+            wrap.append(pool);
+            body.append(wrap);
+          }
+          if (q.type === "drag_groups") {
+            const wrap = el("div", { class: "dragwrap" });
+            const zones = el("div", { class: "dragzone" });
+            q.__groupNames.forEach((g) => {
+              const z = el("div", { class: "zone", dataset: { gname: g } });
+              z.append(el("h4", {}, g), el("div", { class: "droparea" }));
+              zones.append(z);
+            });
+            wrap.append(zones);
+            const pool = el("div", { class: "pool" });
+            q.__items.forEach((item) => {
+              pool.append(
+                el(
+                  "div",
+                  { class: "pill", draggable: true, dataset: { txt: item } },
+                  item,
+                ),
+              );
+            });
+            wrap.append(pool);
+            body.append(wrap);
+          }
+          card.append(body, el("div", { class: "result", id: `res_${qi}` }));
+          list.append(card);
+        });
+        enableDragDrop();
+      }
+
+      function enableDragDrop() {
+        document.querySelectorAll(".pill").forEach((p) => {
+          p.addEventListener("dragstart", (e) => {
+            e.dataTransfer.setData("text/plain", p.dataset.txt);
+          });
+        });
+        document.querySelectorAll(".droparea,.pool").forEach((area) => {
+          area.addEventListener("dragover", (e) => e.preventDefault());
+          area.addEventListener("drop", (e) => {
+            e.preventDefault();
+            const txt = e.dataTransfer.getData("text/plain");
+            if (!txt) return;
+            const old = document.querySelector(
+              `.pill[data-txt="${CSS.escape(txt)}"]`,
+            );
+            if (old) old.remove();
+            const pill = el(
+              "div",
+              { class: "pill", draggable: true, dataset: { txt } },
+              txt,
+            );
+            pill.addEventListener("dragstart", (ev) =>
+              ev.dataTransfer.setData("text/plain", txt),
+            );
+            area.append(pill);
+          });
+        });
+      }
+
+      function getUserAnswer(q, qi) {
+        if (q.type === "single" || q.type === "multi") {
+          return Array.from(
+            document.querySelectorAll(`#q_${qi} input:checked`),
+          ).map((x) => x.value);
+        }
+        if (q.type === "tfset") {
+          return q.statements.map((st, si) => {
+            const inp = document.querySelector(
+              `input[name="q${qi}_s${si}"]:checked`,
+            );
+            return inp ? inp.value === "Đúng" : null;
+          });
+        }
+        if (q.type === "drag_pairs") {
+          const ans = {};
+          document.querySelectorAll(`#q_${qi} .zone`).forEach((z) => {
+            const target = z.dataset.target;
+            const pill = z.querySelector(".pill");
+            if (pill) ans[pill.dataset.txt] = target;
+          });
+          return ans;
+        }
+        if (q.type === "drag_groups") {
+          const ans = {};
+          document.querySelectorAll(`#q_${qi} .zone`).forEach((z) => {
+            const gname = z.dataset.gname;
+            ans[gname] = Array.from(z.querySelectorAll(".pill")).map(
+              (p) => p.dataset.txt,
+            );
+          });
+          return ans;
+        }
+        return null;
+      }
+
+      function isCorrect(q, ans) {
+        if (q.type === "single" || q.type === "multi") {
+          return (
+            ans.length === q.answer.length &&
+            ans.every((a) => q.answer.includes(a))
+          );
+        }
+        if (q.type === "tfset") {
+          return ans.every((a, i) => a === q.statements[i].answer);
+        }
+        if (q.type === "drag_pairs") {
+          return Object.entries(q.pairs).every(([l, r]) => ans[l] === r);
+        }
+        if (q.type === "drag_groups") {
+          return Object.entries(q.groups).every(([g, arr]) =>
+            arr.every((item) => ans[g] && ans[g].includes(item)),
+          );
+        }
+        return false;
+      }
+
+      function showKey(q, qi) {
+        const res = document.getElementById(`res_${qi}`);
+        res.innerHTML = "";
+        if (q.type === "single" || q.type === "multi")
+          res.innerHTML = `<div class="hint">Đáp án: <b>${q.answer.join(
+            ", ",
+          )}</b></div>`;
+        if (q.type === "tfset")
+          res.innerHTML = `<div class="hint">Đáp án: <b>${q.statements
+            .map((s) => (s.answer ? "Đúng" : "Sai"))
+            .join(" · ")}</b></div>`;
+        if (q.type === "drag_pairs")
+          res.innerHTML = `<div class="hint">Đáp án:<br><b>${Object.entries(
+            q.pairs,
+          )
+            .map(([l, r]) => `${l} → ${r}`)
+            .join("<br>")}</b></div>`;
+        if (q.type === "drag_groups")
+          res.innerHTML = `<div class="hint">Đáp án:<br><b>${Object.entries(
+            q.groups,
+          )
+            .map(([g, a]) => `${g}: ${a.join(", ")}`)
+            .join("<br>")}</b></div>`;
+      }
+
+      function checkAll() {
+        let correct = 0;
+        WORK.forEach((q, qi) => {
+          const res = document.getElementById(`res_${qi}`);
+          const user = getUserAnswer(q, qi);
+          if (isCorrect(q, user)) {
+            correct++;
+            res.textContent = "✔ Đúng";
+            res.className = "result r-good";
+          } else {
+            res.textContent = "✘ Sai";
+            res.className = "result r-bad";
+          }
+        });
+        document.getElementById("meta").textContent =
+          `${correct}/${WORK.length} đúng`;
+      }
+
+      document.getElementById("btnCheck").addEventListener("click", checkAll);
+      document
+        .getElementById("btnReset")
+        .addEventListener("click", () => reset(true));
+      let keyVisible = false;
+      document.getElementById("btnToggleKey").addEventListener("click", () => {
+        keyVisible = !keyVisible;
+        WORK.forEach((q, qi) => {
+          if (keyVisible) showKey(q, qi);
+          else {
+            const r = document.getElementById(`res_${qi}`);
+            r.textContent = "";
+            r.className = "result";
+          }
+        });
+      });
+
+      reset(true);
+    </script>
+  </body>
+</html>
